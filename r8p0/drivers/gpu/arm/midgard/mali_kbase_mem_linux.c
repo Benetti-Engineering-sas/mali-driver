@@ -2534,9 +2534,13 @@ void kbase_vunmap(struct kbase_context *kctx, struct kbase_vmap_struct *map)
 KBASE_EXPORT_TEST_API(kbase_vunmap);
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 2, 0))
+#include <trace/events/kmem.h>
+
 static void mali_add_mm_counter(struct mm_struct *mm, int member, long value)
 {
 	percpu_counter_add(&mm->rss_stat[member], value);
+
+	trace_rss_stat(mm, member);
 }
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 5, 0))
 static void mali_add_mm_counter(struct mm_struct *mm, int member, long value)
