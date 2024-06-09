@@ -433,6 +433,18 @@ int kbase_mem_evictable_init(struct kbase_context *kctx)
 	INIT_LIST_HEAD(&kctx->evict_list);
 	mutex_init(&kctx->jit_evict_lock);
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
+	kctx->reclaim = shrinker_alloc(0, "mali");
+	if (!kctx->reclaim)
+		return -ENOMEM;
+	/* Register shrinker */
+	kctx->reclaim->count_objects = kbase_mem_evictable_reclaim_count_objects;
+	kctx->reclaim->scan_objects = kbase_mem_evictable_reclaim_scan_objects;
+	kctx->reclaim->seeks = DEFAULT_SEEKS;
+	kctx->reclaim->batch = 0;
+
+	shrinker_register(kctx->reclaim);
+#else
 	/* Register shrinker */
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3, 12, 0)
 	kctx->reclaim.shrink = kbase_mem_evictable_reclaim_shrink;
@@ -446,17 +458,24 @@ int kbase_mem_evictable_init(struct kbase_context *kctx)
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 1, 0)
 	kctx->reclaim.batch = 0;
 #endif
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 0, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
+	shrinker_register(kctx->reclaim, "mali");
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(6, 0, 0)
 	register_shrinker(&kctx->reclaim, "mali");
 #else
 	register_shrinker(&kctx->reclaim);
+#endif
 #endif
 	return 0;
 }
 
 void kbase_mem_evictable_deinit(struct kbase_context *kctx)
 {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
+	shrinker_free(kctx->reclaim);
+#else
 	unregister_shrinker(&kctx->reclaim);
+#endif
 }
 
 struct kbase_mem_zone_cache_entry {

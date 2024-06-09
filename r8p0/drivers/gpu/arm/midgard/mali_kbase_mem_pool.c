@@ -366,6 +366,20 @@ int kbase_mem_pool_init(struct kbase_mem_pool *pool,
 	spin_lock_init(&pool->pool_lock);
 	INIT_LIST_HEAD(&pool->page_list);
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
+	pool->reclaim = shrinker_alloc(0, "mali");
+	if (!pool->reclaim) {
+		pool_dbg(pool, "not initialized\n");
+		return -ENOMEM;
+	}
+	/* Register shrinker */
+	pool->reclaim->count_objects = kbase_mem_pool_reclaim_count_objects;
+	pool->reclaim->scan_objects = kbase_mem_pool_reclaim_scan_objects;
+	pool->reclaim->seeks = DEFAULT_SEEKS;
+	pool->reclaim->batch = 0;
+
+	shrinker_register(pool->reclaim);
+#else
 	/* Register shrinker */
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3, 12, 0)
 	pool->reclaim.shrink = kbase_mem_pool_reclaim_shrink;
@@ -384,6 +398,7 @@ int kbase_mem_pool_init(struct kbase_mem_pool *pool,
 #else
 	register_shrinker(&pool->reclaim);
 #endif
+#endif
 
 	pool_dbg(pool, "initialized\n");
 
@@ -400,7 +415,11 @@ void kbase_mem_pool_term(struct kbase_mem_pool *pool)
 
 	pool_dbg(pool, "terminate()\n");
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 0, 0)
+	shrinker_free(pool->reclaim);
+#else
 	unregister_shrinker(&pool->reclaim);
+#endif
 
 	kbase_mem_pool_lock(pool);
 	pool->max_size = 0;
